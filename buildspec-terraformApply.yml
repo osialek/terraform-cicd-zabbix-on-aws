@@ -32,10 +32,9 @@ phases:
   post_build:
     commands:
       - echo "Searching for SSH key"
-      - export SSH_KEY_NAME="ec2_SSH_Key.pem"  # The known name of the SSH key
-      - find . -name "${SSH_KEY_NAME}" -print  # Find the SSH key in the build environment
+      - find . -name "ec2_SSH_Key.pem" -print  # Find the SSH key in the build environment
       - mkdir -p artifacts  # Create a folder to store artifacts
-      - KEY_PATH=$(find . -name "${SSH_KEY_NAME}" -print | head -n 1)  # Get the first match
+      - KEY_PATH=$(find . -name "ec2_SSH_Key.pem" -print | head -n 1)  # Get the first match
       - if [[ -n "${KEY_PATH}" ]]; then cp "${KEY_PATH}" artifacts/; else echo "SSH key not found"; fi  # Copy the SSH key to artifacts if found
 artifacts:
   files:

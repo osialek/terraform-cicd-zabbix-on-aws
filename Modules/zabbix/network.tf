@@ -32,7 +32,6 @@ resource "aws_subnet" "private_subnet01" {
     Environment = "${var.environment}"
   }
 }
-
 # Deploy Internet Gateway
 resource "aws_internet_gateway" "core_vpc_igw" {
   vpc_id = aws_vpc.core_vpc.id
@@ -42,7 +41,6 @@ resource "aws_internet_gateway" "core_vpc_igw" {
     Environment = "${var.environment}"
   }
 }
-
 # Deploy EIP for NAT Gateway
 resource "aws_eip" "nat_gw_eip" {
   domain = "vpc"
@@ -52,7 +50,6 @@ resource "aws_eip" "nat_gw_eip" {
     Environment = "${var.environment}"
   }
 }
-
 # Deploy NAT Gateway
 resource "aws_nat_gateway" "nat_gw" {
   allocation_id = aws_eip.nat_gw_eip.allocation_id
@@ -64,16 +61,13 @@ resource "aws_nat_gateway" "nat_gw" {
     Environment = "${var.environment}"
   }
 }
-
 # Public Route Table
 resource "aws_route_table" "public_subnet01_rt" {
   vpc_id = aws_vpc.core_vpc.id
-
   route {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.core_vpc_igw.id
   }
-
   tags = {
     Name = "${aws_vpc.core_vpc.tags.Name}-public-${var.zone_ids[0]}-routeTable"
   }
@@ -81,17 +75,14 @@ resource "aws_route_table" "public_subnet01_rt" {
 # Private Route Table
 resource "aws_route_table" "private_subnet01_rt" {
   vpc_id = aws_vpc.core_vpc.id
-
   route {
     cidr_block     = "0.0.0.0/0"
     nat_gateway_id = aws_nat_gateway.nat_gw.id
   }
-
   tags = {
     Name = "${aws_vpc.core_vpc.tags.Name}-private-${var.zone_ids[0]}-routeTable"
   }
 }
-
 # Route Tables association to subnets
 resource "aws_route_table_association" "public_subnet01_rt_association" {
   subnet_id      = aws_subnet.public_subnet01.id
@@ -101,8 +92,6 @@ resource "aws_route_table_association" "private_subnet01_rt_association" {
   subnet_id      = aws_subnet.private_subnet01.id
   route_table_id = aws_route_table.private_subnet01_rt.id
 }
-
-
 # Deploy NACLs
 resource "aws_network_acl" "public_nacl" {
   vpc_id     = aws_vpc.core_vpc.id

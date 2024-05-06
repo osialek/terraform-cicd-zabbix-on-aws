@@ -104,8 +104,8 @@ Although if you do it with the CI/CD pipeline introduced later in this document,
 On AWS:
 
 - Access keys Secrets stored in secrets named:
-  - /terraform/qa/AWS_ACCESS_KEY_ID
-  - /terraform/qa/AWS_SECRET_ACCESS_KEY
+  - /terraform/dev/AWS_ACCESS_KEY_ID
+  - /terraform/dev/AWS_SECRET_ACCESS_KEY
 - GitHub Token Secret (if GitHub is used for Source) named:
   - terraform/githubToken
 
@@ -133,8 +133,8 @@ On AWS:
 3. Create a Secret in Secrets Manager with your GitHub Token as a Value (unless you want to use CodeCommit, then you can skip adding that secret but you will have to change codePipeline template according to the comments within it). Secret name should be as followed:
    - /terraform/githubToken
 4. Create Secrets in Secrets Manager with your AWS Access Keys. With secrets name accordingly:
-   - /terraform/qa/AWS_ACCESS_KEY_ID
-   - /terraform/qa/AWS_SECRET_ACCESS_KEY
+   - /terraform/dev/AWS_ACCESS_KEY_ID
+   - /terraform/dev/AWS_SECRET_ACCESS_KEY
 5. Launch the CloudFormation template in your AWS Account
    - Name your stack as you'd like to easily identify it in CloudFormation
    - Fill in necessary parameters (repo where your customized code is or CodeCommit AWS based repository), example with GitHub as a repo:

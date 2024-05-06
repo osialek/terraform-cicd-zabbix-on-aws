@@ -67,7 +67,9 @@ variable "zabbix_server_sg_egress_rules" {
     }
   }
 }
-# Bastion Host:
+# SECURITY GROUP RULES:
+#######################
+# Bastin Host:
 variable "bastion_host_sg_ingress_rules" {
   type = map(object(
     {
@@ -93,6 +95,7 @@ variable "bastion_host_sg_ingress_rules" {
   }
 }
 
+## Common NACL rules (private & public)
 variable "common_nacl_ingress_rules" {
   type = map(object(
     {
