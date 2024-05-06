@@ -26,9 +26,6 @@ phases:
       - cd environments/Dev/zabbix/
       - terragrunt apply --auto-approve # Launch terragrunt apply with auto approve flag
       - terragrunt show -json > terragrunt_show.json  # Output show (current state after deploy) to a JSON file
-      - mkdir artifacts
-      - cat $(find . -name "ec2_SSH_Key.pem" -print | head -n 1) > artifacts/ssh_key.pem
 artifacts:
   files:
     - environments/Dev/zabbix/terragrunt_show.json # Save the output JSON file as an artifact 
-    - "artifacts/*"
