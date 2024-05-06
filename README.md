@@ -141,6 +141,7 @@ On AWS:
     ![CloudFormation deployment - Parameters](./images/cloudformation-parameters.png)
 6. Proceed with CloudFormation stack further (next, next, next...) + accept that stack might provide IAM resources.
 7. Voila! - Your enviornment is ready. Now the CI/CD pipeline will run for the first time after it's provisioning, but don't worry, there is a Manual Approval required to deploy any resources with Terragrunt. Feel free to modify the config files available in this repo.
+   - Get the SSH key from the Terraform Apply output (in the terragrunt show output json file)
  
 # Potential enhancements
 
