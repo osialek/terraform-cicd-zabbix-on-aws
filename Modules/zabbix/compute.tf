@@ -1,6 +1,3 @@
-# + number of web server instances (according to environment) and one db server
-# + Security groups + NACLs + Route Tables
-
 # AMI used by Web & Database servers
 data "aws_ami" "ubuntu_2204_latest" {
   most_recent = true
@@ -10,16 +7,13 @@ data "aws_ami" "ubuntu_2204_latest" {
   }
   owners = ["099720109477"] # <-- Canonical
 }
-
 # Fetch current Region
 data "aws_region" "current" {}
-
 locals {
   region = data.aws_region.current.name
 }
 
-
-# Web Server security group with dynamic rules association from object variable
+# Zabbix Server Security Group with dynamic rules association from object variable
 resource "aws_security_group" "sg_zabbix_server" {
   name   = "sg_zabbix_server"
   vpc_id = aws_vpc.core_vpc.id
@@ -52,7 +46,6 @@ resource "aws_security_group" "sg_zabbix_server" {
   }
   lifecycle {
     create_before_destroy = true
-    # prevent_destroy = true
   }
   tags = {
     Name        = "sg-zabbix-server"
@@ -61,6 +54,7 @@ resource "aws_security_group" "sg_zabbix_server" {
     Environment = var.environment
   }
 }
+# Bastion Host Security Group
 resource "aws_security_group" "sg_bastion_host" {
   name   = "sg_bastion_host"
   vpc_id = aws_vpc.core_vpc.id
@@ -91,11 +85,13 @@ resource "aws_security_group" "sg_bastion_host" {
   }
 }
 
-module "ssm_instance_profile" {
+# External module used to provide SSM Instance Profile in AWS to access EC2 through SSM Session Manager
+ module "ssm_instance_profile" {
   source  = "bayupw/ssm-instance-profile/aws"
   version = "1.1.0"
 }
 
+# Basion Host Deployment
 resource "aws_instance" "bastion_host" {
   ami                         = var.bastion_host_ami
   instance_type               = var.instance_type_zabbix_server
@@ -121,14 +117,15 @@ resource "aws_eip" "bastion_host" {
     Environment = "${var.environment}"
   }
 }
-# Deploy EC2 for Zabbix Server with user-data script execution
+
+# Deploy EC2 for Zabbix Server with user-data script execution to configure Zabbix server on it
 resource "aws_instance" "zabbix_server_1" {
   ami                         = data.aws_ami.ubuntu_2204_latest.id
   instance_type               = var.instance_type_zabbix_server
   subnet_id                   = aws_subnet.private_subnet01.id
   iam_instance_profile        = module.ssm_instance_profile.aws_iam_instance_profile
   key_name                    = aws_key_pair.generated.key_name
-  associate_public_ip_address = true
+  associate_public_ip_address = false
   vpc_security_group_ids      = [aws_security_group.sg_zabbix_server.id]
   user_data                   = file("./user-data/zabbix-user-data.sh")
   tags = {
@@ -138,24 +135,27 @@ resource "aws_instance" "zabbix_server_1" {
     Environment = var.environment
   }
 }
-# Create EIP for EC2 Instance ZabbixServer
-resource "aws_eip" "zabbix_server_1" {
-  domain   = "vpc"
-  instance = aws_instance.zabbix_server_1.id
-  tags = {
-    Name        = "${aws_vpc.core_vpc.tags.Name}-zabbix-server-eip"
-    Terraform   = "true"
-    Environment = "${var.environment}"
-  }
-}
-output "zabbix_node_1_public_ip" {
-  value = aws_instance.zabbix_server_1.public_ip
-}
+
+## USE THIS IF ZABBIX IS A PUBLIC INSTANCE
+# \/\/\/\/
+# # Create EIP for EC2 Instance ZabbixServer
+# resource "aws_eip" "zabbix_server_1" {
+#   domain   = "vpc"
+#   instance = aws_instance.zabbix_server_1.id
+#   tags = {
+#     Name        = "${aws_vpc.core_vpc.tags.Name}-zabbix-server-eip"
+#     Terraform   = "true"
+#     Environment = "${var.environment}"
+#   }
+# }
+# output "zabbix_node_1_public_ip" {
+#   value = aws_instance.zabbix_server_1.public_ip
+# }
 output "zabbix_node_1_private_ip" {
   value = aws_instance.zabbix_server_1.private_ip
 }
 
-# Use in case of HA setup (with subnets in >= 2 AZs)
+## Use in case of HA setup (with subnets in >= 2 AZs)
 # \/\/\/\/
 # resource "aws_instance" "zabbix_server_2" {
 #   ami           = data.aws_ami.ubuntu_2204_latest.id
@@ -191,7 +191,6 @@ resource "aws_instance" "ec2_zabbix_agent" {
   ami           = data.aws_ami.ubuntu_2204_latest.id
   instance_type = var.instance_type_workload_with_agent
   depends_on    = [aws_instance.zabbix_server_1]
-  # count                       = var.instance_replica_count
   subnet_id                   = aws_subnet.public_subnet01.id
   iam_instance_profile        = module.ssm_instance_profile.aws_iam_instance_profile
   key_name                    = aws_key_pair.generated.key_name
