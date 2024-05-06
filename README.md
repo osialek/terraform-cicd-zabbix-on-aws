@@ -158,7 +158,12 @@ This solution is a POC, but is solid and should work fine even in production. Ho
   - use user-data script defined in terraform configuration for all EC2 instances
 - enhance user-data variables' security - use ssm or vault
   - however, the initial credentials for Zabbix should be changed after configuration by admin/user anyway.
+- SSH key pair is getting generated on the build machine during the CICD pipeline activities (apply). There could be a script implemented to upload the key to git repository or somewhere else (s3, etc...), to reuse the key if necessary.
 
 ## Notes
 
 - Deployed Zabbix server is running on the latest Ubuntu 22.04 image available in the AWS AMI Catalog
+- Initial credentials for Zabbix are available in the user-data script: /Modules/zabbix/user-data/zabbix-user-data.sh *They can be replaced or changed after initial configuration.*
+  - DB_USER="zabbix"
+  - DB_USER_PASSWORD="password"
+

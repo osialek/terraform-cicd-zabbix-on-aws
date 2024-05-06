@@ -86,6 +86,12 @@ variable "bastion_host_sg_ingress_rules" {
       protocol    = "tcp"
       cidr_blocks = ["0.0.0.0/0"]
     }
+    "3389" = {
+      description = "Port 3389 = RDP"
+      port        = 3389
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
     "all" = {
       description = "All internal"
       port        = 0

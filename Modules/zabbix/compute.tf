@@ -191,10 +191,10 @@ resource "aws_instance" "ec2_zabbix_agent" {
   ami           = data.aws_ami.ubuntu_2204_latest.id
   instance_type = var.instance_type_workload_with_agent
   depends_on    = [aws_instance.zabbix_server_1]
-  subnet_id                   = aws_subnet.public_subnet01.id
+  subnet_id                   = aws_subnet.private_subnet01.id
   iam_instance_profile        = module.ssm_instance_profile.aws_iam_instance_profile
   key_name                    = aws_key_pair.generated.key_name
-  associate_public_ip_address = true
+  associate_public_ip_address = false
   vpc_security_group_ids      = [aws_security_group.sg_zabbix_server.id]
   user_data = base64encode(templatefile("./user-data/zabbix-target-agent.sh", {
     ZABBIX_RELEASE_REPO = "https://repo.zabbix.com/zabbix/6.4/ubuntu/pool/main/z/zabbix-release/zabbix-release_6.4-1+ubuntu22.04_all.deb"
