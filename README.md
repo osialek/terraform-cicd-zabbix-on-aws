@@ -78,7 +78,7 @@ This solution comes with a CI/CD pipeline developed in AWS CodePipeline. The pip
 - RepositoryOwner - Provide GitHub Repository Owner
 - RepositoryBranch - Repository Branch to use in the CI/CD pipeline
 
-This all refers to the repository where your code will be, since there are customizations required in the terragrunt hcl files, it's required to have a copy repo of this with your customized configuration. Details are described below in the installation manual. CI/CD requires also 3 secrets in Secrets Manager, which is also documented below.
+All these parameters refer to the repository where your code will be stored, since there are customizations required in the terragrunt hcl files, it's required to have a copy repo of this with your customized configuration. Details are described below in the installation manual. CI/CD requires also 3 secrets in Secrets Manager, which is also documented below.
 
 ### CI/CD Pipeline Design:
 
@@ -99,7 +99,7 @@ Local packages:
   - ACCESS KEYS in Vault
   - or other
 
-Although if you do it with the CI/CD pipeline introduced later in this document, you dont need to set it up on your PC. It will be automatically set up on the build machines, running in the CI/CD pipeline.
+Although if you do it with the CI/CD pipeline, you dont need to set it up on your PC. It will be automatically set up on the build machines, running in the CI/CD pipeline.
 
 On AWS:
 
