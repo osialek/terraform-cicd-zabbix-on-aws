@@ -1,0 +1,450 @@
+# Deploy a codePipeline for Terraform CI/CD deployment
+# This CloudFormation template provides a network architecture for CICD
+# CICD Pipeline with automated deployment of the Zabbix solution on AWS
+# Details can be found in readme on: https://github.com/osialek/terraform-cicd-zabbix-on-aws.git
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  # CodeCommit / GitHub repo name
+  RepositoryName:
+    Type: String
+    Description: Name of the GitHub repository for the source stage
+  # Remove if CodeCommit is used.    
+  RepositoryOwner:
+    Type: String
+    Description: Provide GitHub Repository Owner
+  # Branch version of the repo (to be used in the pipeline)
+  RepositoryBranch:
+    Type: String
+    Description: Repository Branch to use in the CI/CD pipeline
+
+Resources:
+# This value should be provided prior to CloudFormation template launch.
+# Please create a secret named: /terraform/githubToken with your github token
+# or change the secret name in the pipeline or if you want (not recommended)
+# use below code to deploy secret within the template
+
+  # GitHubTokenSecret:
+  #   Type: AWS::SecretsManager::Secret
+  #   Properties:
+  #     Name: /terraform/githubToken
+  #     Description: GitHub personal access token for CodePipeline
+  #     SecretString: "TOKEN VALUE" # Store the GitHub PAT securely
+
+  # VPC/Network for CodeBuild VM
+  # Creating a simple VPC with one public subnet
+  CodeBuildVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/20
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: codeBuild-VPC
+  # InternetGateway
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: codeBuild-VPC-igw
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref CodeBuildVpc
+      InternetGatewayId: !Ref InternetGateway
+  # Public Subnet + NAT Gateway
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref CodeBuildVpc
+      CidrBlock: 10.0.0.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: codeBuild-VPC-public-subnet
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref CodeBuildVpc
+      Tags:
+        - Key: Name
+          Value: codeBuild-VPC-public-subnet-routeTable
+  AssociatePublicRouteTable:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+  InternetRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  NATGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      AllocationId: !GetAtt NatGatewayEIP.AllocationId # Elastic IP for public access
+      Tags:
+        - Key: Name
+          Value: codeBuild-VPC-nat
+  # Elastic IP for NAT Gateway
+  NatGatewayEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+  # Private Subnet for CodeBuild EC2
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref CodeBuildVpc
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: codeBuild-VPC-private-subnet
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref CodeBuildVpc
+      Tags:
+        - Key: Name
+          Value: codeBuild-VPC-private-subnet-routeTable
+  AssociatePrivateRouteTable:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet
+      RouteTableId: !Ref PrivateRouteTable
+  PrivateRouteToInternet:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGateway
+  # S3 VPC Gateway Endpoint to access S3 within AWS network (not via Internet)
+  S3GatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref CodeBuildVpc
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      RouteTableIds:
+        - !Ref PrivateRouteTable
+        - !Ref PublicRouteTable
+  # Security Group for CodeBuild        
+  CodeBuildSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref CodeBuildVpc
+      GroupDescription: Security group for CodeBuild to access S3 and internet
+      # Inbound rules (keep it restrictive)
+      SecurityGroupIngress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 127.0.0.1/32 # Loopback (effectively deny all inbound traffic)
+      # Outbound rules (allow necessary outbound traffic)
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0 # Allow all outbound traffic (egress only)
+      Tags:
+        - Key: Name
+          Value: codeBuild-sg
+  # IAM Role for CodePipeline
+  CodePipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodePipelinePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:*
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue # Permission to retrieve the secret (github token)
+                Resource:
+                  - !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:GitHubTokenSecret # Replace with your secret name
+              # Policies in case CodeCommit is used instead of GitHub repo.
+              - Effect: Allow
+                Action:
+                  - codecommit:GetBranch
+                  - codecommit:GetCommit
+                  - codecommit:ListBranches
+                  - codecommit:BatchGet*
+                  - codecommit:GetRepository
+                  - codecommit:UploadArchive
+                  - codecommit:GetUploadArchiveStatus
+                Resource:
+                  - !Sub arn:aws:codecommit:${AWS::Region}:${AWS::AccountId}:${RepositoryName}
+              - Effect: Allow
+                Action:
+                  - codebuild:StartBuild # To start a build in CodeBuild
+                  - codebuild:BatchGetBuilds # To get build status
+                  - codepipeline:PutJobSuccessResult # To report success
+                  - codepipeline:PutJobFailureResult # To report failure                  
+                Resource:
+                  - !Sub arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/TerraformBuildValidateProject
+                  - !Sub arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/TerragruntBuildPlanProject
+                  - !Sub arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/TerragruntBuildApplyProject
+
+  # IAM Role for CodeBuild
+  BuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodeBuildPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:*
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DeleteNetworkInterface
+                  - ec2:CreateNetworkInterface
+                  - ec2:DescribeDhcpOptions
+                  - ec2:DescribeVpcs
+                  - ec2:DescribeImages
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ec2:CreateNetworkInterfacePermission
+                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:network-interface/*
+                Condition:
+                  StringEquals:
+                    ec2:AuthorizedService: codebuild.amazonaws.com
+              - Effect: Allow
+                Action:
+                  - sts:AssumeRole
+                  - iam:PassRole
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ssm:GetParametersByPath
+                  - ssm:GetParameters
+                Resource:
+                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/terraform/zabbix-pipeline/pipeline-name
+                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/terraform/zabbix-pipeline/artifact-bucket-name
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue # Permission to retrieve the secret
+                Resource:
+                  - !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:/terraform/* # Reference to the secret
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup # Permission to create log groups
+                  - logs:CreateLogStream # Create log streams in CloudWatch Logs
+                  - logs:PutLogEvents # Write to CloudWatch Logs
+                Resource:
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/TerraformBuildValidateProject:*
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/TerragruntBuildPlanProject:*
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/TerragruntBuildApplyProject:*                  
+
+  # CodeBuild Project - Terraform Validate
+  TerraformBuildValidate:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: TerraformBuildValidateProject
+      ServiceRole: !GetAtt BuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspec-terraformValidate.yml
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref CodeBuildSecurityGroup
+        Subnets:
+          - !Ref PrivateSubnet
+        VpcId: !Ref CodeBuildVpc
+
+  # CodeBuild Project - Terragrunt Plan
+  TerragruntBuildPlan:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: TerragruntBuildPlanProject
+      ServiceRole: !GetAtt BuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspec-terraformPlan.yml
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref CodeBuildSecurityGroup
+        Subnets:
+          - !Ref PrivateSubnet
+        VpcId: !Ref CodeBuildVpc
+
+  # CodeBuild Project - Terragrunt Apply
+  TerragruntBuildApply:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: TerragruntBuildApplyProject
+      ServiceRole: !GetAtt BuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspec-terraformApply.yml
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref CodeBuildSecurityGroup
+        Subnets:
+          - !Ref PrivateSubnet
+        VpcId: !Ref CodeBuildVpc
+
+  # Artifact S3 Bucket for the pipeline
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      VersioningConfiguration:
+        Status: Enabled
+  # Save s3 bucket name into parameter store - in case it's required to fetch / put artifacts
+  S3BucketNameParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /terraform/zabbix-pipeline/artifact-bucket-name
+      Type: String
+      Value: !Ref ArtifactBucket
+      Description: S3 bucket name for storing pipeline artifacts
+  # CodePipeline - Main pipelien for Terraform Infrastructure deployment
+  CodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: Terraform-Zabbix-Pipeline
+      RoleArn: !GetAtt CodePipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+      Stages:
+        ## USE THIS CODE BELOW IF YOU WANT TO USE CODECOMMIT INSTEAD OF GITHUB!
+        # - Name: Source
+        #   Actions:
+        #     - Name: "FetchSource"
+        #       ActionTypeId:
+        #         Category: "Source"
+        #         Owner: "AWS"
+        #         Provider: "CodeCommit"
+        #         Version: "1"
+        #       Configuration:
+        #         RepositoryName: !Ref RepositoryName
+        #         BranchName: !Ref RepositoryBranch
+        #       OutputArtifacts:
+        #         - Name: "SourceArtifact"
+        - Name: Source
+          Actions:
+            - Name: FetchSource
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Provider: GitHub
+                Version: '1'
+              Configuration:
+                Owner: !Ref RepositoryOwner # Set the correct GitHub username
+                Repo: !Ref RepositoryName # Set the GitHub repository name
+                Branch: !Ref RepositoryBranch # The branch you want to fetch
+                OAuthToken: !Sub '{{resolve:secretsmanager:/terraform/githubToken:SecretString}}' # Reference the GitHubTokenSecret
+              OutputArtifacts:
+                - Name: SourceArtifact # Output artifact to pass to next stages                
+        - Name: Validate
+          Actions:
+            - Name: TerraformValidate
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref TerraformBuildValidate
+              InputArtifacts:
+                - Name: SourceArtifact # Source artifact with Terraform files taken from Repo/Source stage
+              OutputArtifacts:
+                - Name: TerraformValidateOutput # Output artifact with validation errors
+        - Name: Plan
+          Actions:
+            - Name: TerragruntPlan
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref TerragruntBuildPlan
+              InputArtifacts:
+                - Name: SourceArtifact # Source artifact with Terraform files taken from Repo/Source stage
+              OutputArtifacts:
+                - Name: TerragruntPlanOutput # Output artifact with validation errors
+        - Name: Approval
+          Actions:
+            - Name: ManualApproval
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Provider: Manual
+                Version: '1'
+              Configuration:
+                CustomData: Review the Terragrunt plan and provide your approval/reject with comments.
+        - Name: Apply
+          Actions:
+            - Name: TerragruntApply
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref TerragruntBuildApply
+              InputArtifacts:
+                - Name: SourceArtifact # Source artifact with Terraform files taken from Repo/Source stage
+              OutputArtifacts:
+                - Name: TerragruntApplyOutput # Output artifact with validation errors  
+  # Save codepipeline name into parameter store
+  PipelineNameParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /terraform/zabbix-pipeline/pipeline-name
+      Type: String
+      Value: !Ref CodePipeline
+      Description: Name of the zabbix pipeline
+Outputs:
+  PipelineName:
+    Description: Name of the created pipeline
+    Value: !Ref CodePipeline

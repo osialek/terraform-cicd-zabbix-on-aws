@@ -1,0 +1,21 @@
+version: 0.2
+phases:
+  install:
+    commands:
+      - echo "Starting the build"
+      - wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+      - echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+      - sudo apt update && sudo apt install terraform
+      - terraform version  # Verify Terraform installation
+      - ls #verify repo/files
+  build:
+    commands:
+      - echo "Running Terraform Validate"
+      - cd Modules/zabbix/
+      - terraform init
+      - terraform fmt        
+      - terraform validate > validation_output.txt 2>&1 || true  # Capture errors and continue the build
+      # Ignore Errors and Continue: The || true ensures that the build does not fail if terraform validate encounters errors. This allows the build to continue, ensuring the artifact is generated and stored.
+artifacts:
+  files:
+    - Modules/zabbix/validation_output.txt  # Save the output artifact with validation errors
