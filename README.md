@@ -142,7 +142,8 @@ On AWS:
 6. Proceed with CloudFormation stack further (next, next, next...) + accept that stack might provide IAM resources.
 7. Voila! - Your enviornment is ready. Now the CI/CD pipeline will run for the first time after it's provisioning, but don't worry, there is a Manual Approval required to deploy any resources with Terragrunt. Feel free to modify the config files available in this repo.
    - Get the SSH key from the Terraform Apply output (in the terragrunt show output json file)
- 
+  ![Zabbix Console](./images/zabbix-console.png)
+
 # Potential enhancements
 
 This solution is a POC, but is solid and should work fine even in production. However, in future cycles of this solution development the following enhancements could be done:
