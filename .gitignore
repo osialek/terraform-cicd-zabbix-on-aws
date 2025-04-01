@@ -36,3 +36,5 @@ terraform.rc
 ### Terragrunt ###
 # terragrunt cache directories
 **/.terragrunt-cache/*
+
+*.DS_Store
